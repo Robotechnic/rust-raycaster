@@ -1,15 +1,22 @@
 use regex::Regex;
 use std::collections::HashMap;
-use std::fmt::{Debug};
+use std::fmt::Debug;
 use std::fs::File;
 use std::io::{self, BufRead, BufReader, Lines};
 use std::ops::{Index, IndexMut};
 
+use crate::render::Render;
+use macroquad::prelude::{draw_rectangle, BLACK, RED, WHITE};
+
+
 pub struct Map {
     name: String,
-    width: u32,
-    height: u32,
+    width: usize,
+    height: usize,
     tiles: Vec<u8>,
+    x: f32,
+    y: f32,
+    tile_size: f32,
 }
 
 pub struct ParseErrorDetails {
@@ -29,7 +36,7 @@ impl Debug for ParseError {
             ParseError::InvalidFormat(e) => {
                 write!(f, "Invalid format: {}\n", e.message)?;
                 write!(f, " at line {}", e.line)
-            },
+            }
         }
     }
 }
@@ -73,7 +80,6 @@ fn load_fields(
     while let Some(line) = lines.next() {
         *line_number += 1;
         let line = line.map_err(ParseError::FileError)?;
-        println!("Field: {}", line);
         if line == "---" {
             map_reached = true;
             break;
@@ -90,7 +96,7 @@ fn load_fields(
     return Ok(fields);
 }
 
-fn parse_size(size: &str, line: &u32) -> Result<(u32, u32), ParseError> {
+fn parse_size(size: &str, line: &u32) -> Result<(usize, usize), ParseError> {
     let size_regex = Regex::new(r"(\d+)x(\d+)").unwrap();
 
     let captures =
@@ -100,8 +106,8 @@ fn parse_size(size: &str, line: &u32) -> Result<(u32, u32), ParseError> {
                 line: *line,
                 message: "Invalid size format".to_string(),
             }))?;
-    let width = captures.get(1).unwrap().as_str().parse::<u32>().unwrap();
-    let height = captures.get(2).unwrap().as_str().parse::<u32>().unwrap();
+    let width = captures.get(1).unwrap().as_str().parse::<usize>().unwrap();
+    let height = captures.get(2).unwrap().as_str().parse::<usize>().unwrap();
     return Ok((width, height));
 }
 
@@ -113,8 +119,8 @@ fn parse_size(size: &str, line: &u32) -> Result<(u32, u32), ParseError> {
 fn parse_tiles(
     lines: &mut Lines<BufReader<File>>,
     line_number: &mut u32,
-    width: &u32,
-    height: &u32,
+    width: &usize,
+    height: &usize,
 ) -> Result<Vec<u8>, ParseError> {
     let mut tiles = Vec::new();
     let expected_len = (width * height) as usize;
@@ -124,10 +130,12 @@ fn parse_tiles(
         let line = line.map_err(ParseError::FileError)?;
         let mut line = line.split_whitespace();
         while let Some(tile) = line.next() {
-            let tile = tile.parse::<u8>().map_err(|_| ParseError::InvalidFormat(ParseErrorDetails {
-                line: *line_number,
-                message: "Invalid tile format".to_string(),
-            }))?;
+            let tile = tile.parse::<u8>().map_err(|_| {
+                ParseError::InvalidFormat(ParseErrorDetails {
+                    line: *line_number,
+                    message: "Invalid tile format".to_string(),
+                })
+            })?;
             if tiles.len() >= expected_len {
                 return Err(ParseError::InvalidFormat(ParseErrorDetails {
                     line: *line_number,
@@ -140,32 +148,57 @@ fn parse_tiles(
     if tiles.len() < expected_len {
         return Err(ParseError::InvalidFormat(ParseErrorDetails {
             line: *line_number,
-            message: format!("Not enough tiles, expected {} but got {}", expected_len, tiles.len()).to_owned(),
+            message: format!(
+                "Not enough tiles, expected {} but got {}",
+                expected_len,
+                tiles.len()
+            )
+            .to_owned(),
         }));
     }
     return Ok(tiles);
 }
 
 impl Map {
-    pub fn new(name: String, width: u32, height: u32, tiles: Vec<u8>) -> Map {
+    pub fn new(name: String, width: usize, height: usize, tile_size: f32, tiles: Vec<u8>) -> Map {
         assert!(tiles.len() == (width * height) as usize);
         Map {
             name: name,
             width: width,
             height: height,
             tiles: tiles,
+            x: 0.0,
+            y: 0.0,
+            tile_size: tile_size,
         }
     }
 
-    fn get_tile(&self, x: u32, y: u32) -> &u8 {
-        &self.tiles[(y * self.width + x) as usize]
+    #[allow(dead_code)]
+    pub fn set_position(&mut self, x: f32, y: f32) {
+        self.x += x;
+        self.y += y;
     }
 
-    fn get_tile_mut(&mut self, x: u32, y: u32) -> &mut u8 {
-        &mut self.tiles[(y * self.width + x) as usize]
+    /// Automatically sets the tile size so that the map
+    /// fits into the given window size
+    pub fn auto_tile_size(&mut self, window_width: f32, window_height: f32) {
+        let width = window_width as usize / self.width;
+        let height = window_height as usize / self.height;
+        self.tile_size = width.min(height) as f32;
     }
 
-    pub fn parse(map: File) -> Result<Map, ParseError> {
+    fn get_tile(&self, x: usize, y: usize) -> &u8 {
+        &self.tiles[y * self.width + x]
+    }
+
+    fn get_tile_mut(&mut self, x: usize, y: usize) -> &mut u8 {
+        &mut self.tiles[y * self.width + x]
+    }
+
+    /// Parses the given map file and returns a map
+    /// To see how the map file is structured, see the
+    /// README.md file
+    pub fn parse(map: File, tile_size: f32) -> Result<Map, ParseError> {
         let reader = BufReader::new(map);
         let mut lines = reader.lines();
         let mut line = 0;
@@ -187,27 +220,42 @@ impl Map {
 
         let (width, height) = parse_size(size, &line)?;
         let tiles = parse_tiles(&mut lines, &mut line, &width, &height)?;
-        Ok(Map::new(name.to_string(), width, height, tiles))
+        Ok(Map::new(name.to_string(), width, height, tile_size, tiles))
+    }
+
+    pub fn to_map_coordinates(&self, x: f32, y: f32) -> Option<(usize, usize)> {
+        let x = x - self.x;
+        let y = y - self.y;
+        let x = (x / self.tile_size) as usize;
+        let y = (y / self.tile_size) as usize;
+        if x >= self.width || y >= self.height {
+            return None;
+        }
+        Some((x, y))
     }
 }
 
-impl Index<(u32, u32)> for Map {
+impl Index<(usize, usize)> for Map {
     type Output = u8;
 
-    fn index(&self, index: (u32, u32)) -> &u8 {
+    fn index(&self, index: (usize, usize)) -> &u8 {
         self.get_tile(index.0, index.1)
     }
 }
 
-impl IndexMut<(u32, u32)> for Map {
-    fn index_mut(&mut self, index: (u32, u32)) -> &mut u8 {
+impl IndexMut<(usize, usize)> for Map {
+    fn index_mut(&mut self, index: (usize, usize)) -> &mut u8 {
         self.get_tile_mut(index.0, index.1)
     }
 }
 
 impl Debug for Map {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "name: {}, width: {}, height: {}\n", self.name, self.width, self.height)?;
+        write!(
+            f,
+            "name: {}, width: {}, height: {}\n",
+            self.name, self.width, self.height
+        )?;
         for y in 0..self.height {
             for x in 0..self.width {
                 write!(f, "{} ", self.get_tile(x, y))?;
@@ -215,6 +263,29 @@ impl Debug for Map {
             write!(f, "\n")?;
         }
         Ok(())
+    }
+}
+
+impl Render for Map {
+    /// Renders the map in a top-down view
+    fn render(&self) {
+        for tile_y in 0..self.height {
+            for tile_x in 0..self.width {
+                let tile = self.get_tile(tile_x, tile_y);
+                let color = match tile {
+                    0 => WHITE,
+                    1 => BLACK,
+                    _ => RED,
+                };
+                draw_rectangle(
+                    self.x + tile_x as f32 * self.tile_size,
+                    self.y + tile_y as f32 * self.tile_size,
+                    self.tile_size,
+                    self.tile_size,
+                    color,
+                );
+            }
+        }
     }
 }
 
@@ -310,7 +381,7 @@ mod simple_load_test {
     #[test]
     fn load() -> Result<(), Box<dyn std::error::Error>> {
         let map = std::fs::File::open("maps/testMap.map")?;
-        let map = Map::parse(map);
+        let map = Map::parse(map, 20.0);
         match map {
             Ok(map) => {
                 println!("Map is ok:\n{:?}", map);
