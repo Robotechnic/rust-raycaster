@@ -6,16 +6,14 @@ use std::io::{self, BufRead, BufReader, Lines};
 use std::ops::{Index, IndexMut};
 
 use crate::render::Render;
+use crate::vector::Vector;
 use macroquad::prelude::{draw_rectangle, BLACK, RED, WHITE};
-
 
 pub struct Map {
     name: String,
     width: usize,
     height: usize,
     tiles: Vec<u8>,
-    x: f32,
-    y: f32,
     tile_size: f32,
 }
 
@@ -167,16 +165,22 @@ impl Map {
             width: width,
             height: height,
             tiles: tiles,
-            x: 0.0,
-            y: 0.0,
             tile_size: tile_size,
         }
     }
 
     #[allow(dead_code)]
-    pub fn set_position(&mut self, x: f32, y: f32) {
-        self.x += x;
-        self.y += y;
+    pub fn get_width(&self) -> usize {
+        self.width
+    }
+
+    #[allow(dead_code)]
+    pub fn get_height(&self) -> usize {
+        self.height
+    }
+
+    pub fn get_tile_size(&self) -> f32 {
+        self.tile_size
     }
 
     /// Automatically sets the tile size so that the map
@@ -223,15 +227,20 @@ impl Map {
         Ok(Map::new(name.to_string(), width, height, tile_size, tiles))
     }
 
-    pub fn to_map_coordinates(&self, x: f32, y: f32) -> Option<(usize, usize)> {
-        let x = x - self.x;
-        let y = y - self.y;
-        let x = (x / self.tile_size) as usize;
-        let y = (y / self.tile_size) as usize;
-        if x >= self.width || y >= self.height {
+    pub fn in_map(&self, pos: &Vector<f32>) -> bool {
+        pos.x >= 0.0
+            && pos.x < self.width as f32 * self.tile_size
+            && pos.y >= 0.0
+            && pos.y < self.height as f32 * self.tile_size
+    }
+
+    pub fn to_map_coordinates(&self, pos: &Vector<f32>) -> Option<Vector<usize>> {
+        if !self.in_map(pos) {
             return None;
         }
-        Some((x, y))
+        let x = (pos.x / self.tile_size) as usize;
+        let y = (pos.y / self.tile_size) as usize;
+        Some(Vector::new(x, y))
     }
 }
 
@@ -278,8 +287,8 @@ impl Render for Map {
                     _ => RED,
                 };
                 draw_rectangle(
-                    self.x + tile_x as f32 * self.tile_size,
-                    self.y + tile_y as f32 * self.tile_size,
+                    tile_x as f32 * self.tile_size,
+                    tile_y as f32 * self.tile_size,
                     self.tile_size,
                     self.tile_size,
                     color,

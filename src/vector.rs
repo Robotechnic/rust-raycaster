@@ -1,4 +1,4 @@
-use std::ops::{Add, Sub, Mul, AddAssign, SubAssign, MulAssign};
+use std::ops::{Add, Sub, Mul, AddAssign, SubAssign, MulAssign, Div};
 
 pub struct Vector<T> {
     pub x: T,
@@ -9,14 +9,37 @@ impl<T> Vector<T> {
     pub fn new(x: T, y: T) -> Self {
         Self { x, y }
     }
+}
 
-	pub fn to<U>(self) -> Vector<U> where T: Into<U> {
-		Vector {
-			x: self.x.into(),
-			y: self.y.into(),
-		}
+impl Vector<f32> {
+	#[allow(dead_code)]
+	pub fn normalize(&mut self) {
+		let length = (self.x * self.x + self.y * self.y).sqrt();
+		self.x /= length;
+		self.y /= length;
+	}
+
+	#[allow(dead_code)]
+	pub fn to_i32(&self) -> Vector<i32> {
+		Vector::new(self.x as i32, self.y as i32)
 	}
 }
+
+impl Vector<i32> {
+	#[allow(dead_code)]
+	pub fn to_f32(&self) -> Vector<f32> {
+		Vector::new(self.x as f32, self.y as f32)
+	}
+}
+
+impl<T> Clone for Vector<T> where T: Copy {
+	fn clone(&self) -> Self {
+		Self { x: self.x, y: self.y }
+	}
+}
+
+impl<T> Copy for Vector<T> where T: Copy {}
+
 
 impl<T> From<(T, T)> for Vector<T> {
 	fn from((x, y): (T, T)) -> Self {
@@ -95,3 +118,15 @@ impl<T> MulAssign<Vector<T>> for Vector<T> where T: MulAssign {
 		self.y *= rhs.y;
 	}
 }
+
+impl<T> Div<T> for Vector<T> where T: Div<Output = T> + Copy {
+	type Output = Self;
+
+	fn div(self, rhs: T) -> Self::Output {
+		Self {
+			x: self.x / rhs,
+			y: self.y / rhs,
+		}
+	}
+}
+

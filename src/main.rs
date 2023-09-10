@@ -1,11 +1,13 @@
 mod map;
 mod player;
 mod render;
+mod vector;
 
 use macroquad::prelude::*;
 use map::Map;
 use player::Player;
 use render::Render;
+use vector::Vector;
 use std::fs::File;
 
 fn open_map() -> Map {
@@ -66,6 +68,23 @@ async fn main() {
         clear_background(BLACK);
         map.render();
         player.render();
+
+        let ray = player.raycast(&map, 0.0);
+        match ray {
+            player::RayCastResult::NoHit => {}
+            player::RayCastResult::Hit(distance, Vector{x: i, y : j}, side) => {
+                draw_rectangle(
+                    i as f32 * map.get_tile_size(),
+                    j as f32 * map.get_tile_size(),
+                    map.get_tile_size(),
+                    map.get_tile_size(),
+                    if side {RED} else {BLUE},
+                );
+                let distance_text = format!("Distance: {:.2}", distance);
+                draw_text(&distance_text, 10.0, 60.0, 20.0, GREEN);
+            } 
+        }
+
         debug_infos();
 
         next_frame().await
