@@ -6,9 +6,9 @@ mod vector;
 use macroquad::prelude::*;
 use map::Map;
 use player::Player;
-use render::Render;
-use vector::Vector;
 use std::fs::File;
+
+use crate::player::RayCastResult;
 
 fn open_map() -> Map {
     let map = File::open("./maps/testMap.map").unwrap();
@@ -42,6 +42,35 @@ fn move_player(player: &mut Player, map: &Map) {
     }
 }
 
+fn draw_rays(map: &Map, player: &Player) {
+    let mut angle = -std::f32::consts::PI / 4.0;
+    let increment = std::f32::consts::PI / 2.0 / screen_width();
+
+    for i in 0..screen_width() as i32 {
+        let ray = player.raycast(&map, angle);
+        angle += increment;
+        match ray {
+            RayCastResult::NoHit => {}
+            RayCastResult::Hit(distance, _, side) => {
+                let height = screen_height() / distance;
+                let color = if side {
+                    Color::from_rgba(255, 0, 0, 255)
+                } else {
+                    Color::from_rgba(190, 0, 0, 255)
+                };
+                draw_line(
+                    i as f32,
+                    screen_height() / 2.0 - height / 2.0,
+                    i as f32,
+                    screen_height() / 2.0 + height / 2.0,
+                    1.0,
+                    color,
+                );
+            }
+        }
+    }
+}
+
 fn debug_infos() {
     let fps = get_fps();
     let render_time = get_frame_time();
@@ -60,30 +89,16 @@ async fn main() {
         if is_key_pressed(KeyCode::Escape) {
             return;
         }
-        
+
         move_player(&mut player, &map);
         let width = screen_width();
         let height = screen_height();
         map.auto_tile_size(width, height);
         clear_background(BLACK);
-        map.render();
-        player.render();
+        // map.render();
+        // player.render();
 
-        let ray = player.raycast(&map, 0.0);
-        match ray {
-            player::RayCastResult::NoHit => {}
-            player::RayCastResult::Hit(distance, Vector{x: i, y : j}, side) => {
-                draw_rectangle(
-                    i as f32 * map.get_tile_size(),
-                    j as f32 * map.get_tile_size(),
-                    map.get_tile_size(),
-                    map.get_tile_size(),
-                    if side {RED} else {BLUE},
-                );
-                let distance_text = format!("Distance: {:.2}", distance);
-                draw_text(&distance_text, 10.0, 60.0, 20.0, GREEN);
-            } 
-        }
+        draw_rays(&map, &player);
 
         debug_infos();
 

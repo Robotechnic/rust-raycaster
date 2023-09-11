@@ -124,15 +124,15 @@ impl Player {
 
         while !hit && !out {
             if ray_len.x < ray_len.y {
+                distance = ray_len.x;
                 map_pos.x += step.x;
                 ray_len.x += step_size.x;
                 side = false;
-                distance = ray_len.x;
             } else {
+                distance = ray_len.y;
                 map_pos.y += step.y;
                 ray_len.y += step_size.y;
                 side = true;
-                distance = ray_len.y;
             }
 
             if map_pos.x < 0
@@ -147,9 +147,9 @@ impl Player {
         }
 
         if hit {
-            let hit_pos = (pos + (direction * distance)) * map.get_tile_size();
+            let perp_distance = distance * offset.cos();
             RayCastResult::Hit(
-                distance * map.get_tile_size(),
+                perp_distance,
                 Vector::new(map_pos.x as usize, map_pos.y as usize),
                 side,
             )
